@@ -2,7 +2,8 @@
  * ==========================================
  * Smokin Aces Command Center
  * WeeklyScanner.gs
- * Version 4.0
+ * Version 5.0
+ * Feature 1 - Automatic Tournament Discovery
  * ==========================================
  */
 
@@ -14,47 +15,55 @@ function scanPlayersForNewEvents() {
   const players = playersSheet.getDataRange().getValues();
   const tournaments = tournamentsSheet.getDataRange().getValues();
 
-  // Existing tournaments already imported
   const existingEvents = {};
 
   for (let i = 1; i < tournaments.length; i++) {
 
     const eventId = String(tournaments[i][0]).trim();
 
-    if (eventId) {
+    if (eventId !== "") {
       existingEvents[eventId] = true;
     }
 
   }
 
-  // New events discovered
-  const newEvents = {};
+  const discoveredEvents = {};
 
   let playersScanned = 0;
+  let failedPlayers = 0;
 
   for (let i = 1; i < players.length; i++) {
 
-    const pdga = players[i][1];
+    const playerName = String(players[i][0]).trim();
+    const pdga = String(players[i][1]).trim();
 
-    if (!pdga) continue;
+    if (pdga === "") {
+      continue;
+    }
 
     playersScanned++;
 
+    Logger.log("Scanning " + playerName + " (" + pdga + ")");
+
     try {
 
-      const url =
-        "https://www.pdga.com/player/" + pdga;
+      const html = UrlFetchApp.fetch(
+        "https://www.pdga.com/player/" + pdga,
+        {
+          muteHttpExceptions: true
+        }
+      ).getContentText();
 
-      const html = UrlFetchApp.fetch(url).getContentText();
-
-      // Find ONLY the 2026 Tournament Results section
       const section = html.match(
         /2026 Tournament Results([\s\S]*?)Recent Round Ratings/i
       );
 
       if (!section) {
 
-        Utilities.sleep(300);
+        Logger.log("No 2026 results for " + playerName);
+
+        Utilities.sleep(250);
+
         continue;
 
       }
@@ -69,7 +78,7 @@ function scanPlayersForNewEvents() {
 
           if (!existingEvents[eventId]) {
 
-            newEvents[eventId] = true;
+            discoveredEvents[eventId] = true;
 
           }
 
@@ -77,39 +86,84 @@ function scanPlayersForNewEvents() {
 
       }
 
-      Utilities.sleep(300);
+      Utilities.sleep(250);
 
-    } catch(err){
+    } catch (err) {
 
-      Logger.log("Failed Player " + pdga);
+      failedPlayers++;
+
+      Logger.log(
+        "Failed to scan player " +
+        playerName +
+        " (" +
+        pdga +
+        ")"
+      );
 
     }
 
   }
 
-  const events = Object.keys(newEvents).sort();
+  const events = Object.keys(discoveredEvents).sort();
 
-  let output =
-    "Players scanned: " + playersScanned +
+  let added = 0;
+
+  events.forEach(function(eventId){
+
+    tournamentsSheet.appendRow([
+      eventId,
+      "",
+      "",
+      "",
+      "",
+      "https://www.pdga.com/tour/event/" + eventId,
+      "No",
+      new Date()
+    ]);
+
+    added++;
+
+  });
+
+  let message = "";
+
+  message += "Weekly Tournament Discovery Complete\n\n";
+
+  message +=
+    "Players Scanned: " +
+    playersScanned +
+    "\n";
+      message +=
+    "Players Failed: " +
+    failedPlayers +
+    "\n";
+
+  message +=
+    "New Tournaments Found: " +
+    added +
     "\n\n";
 
-  if(events.length === 0){
+  if (events.length > 0) {
 
-    output +=
-      "No new 2026 tournaments found.";
+    message +=
+      "New Event IDs\n";
+    message +=
+      "--------------------------\n";
 
-  }else{
+    events.forEach(function(eventId){
 
-    output +=
-      "New 2026 tournaments found: " +
-      events.length +
-      "\n\n";
+      message += eventId + "\n";
 
-    output += events.join("\n");
+    });
+
+  } else {
+
+    message +=
+      "No new tournaments were discovered.";
 
   }
 
-  SpreadsheetApp.getUi().alert(output);
+  SpreadsheetApp.getUi().alert(message);
 
 }
 
@@ -117,7 +171,7 @@ function scanPlayersForNewEvents() {
 /**
  * Developer Test
  */
-function testWeeklyScanner(){
+function testWeeklyScanner() {
 
   scanPlayersForNewEvents();
 
