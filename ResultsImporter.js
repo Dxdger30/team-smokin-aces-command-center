@@ -2,7 +2,7 @@
  * ==========================================
  * Smokin Aces Command Center
  * ResultsImporter.gs
- * Version 6.0
+ * Version 6.1
  * ==========================================
  */
 
@@ -77,6 +77,7 @@ function importTournamentResults(url) {
         player.place == "1",
         ["1","2","3"].includes(player.place),
 
+        true,
         new Date()
 
       ]);

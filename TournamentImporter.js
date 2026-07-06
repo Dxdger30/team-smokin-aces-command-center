@@ -2,74 +2,110 @@
  * ==========================================
  * Smokin Aces Command Center
  * TournamentImporter.gs
- * Version 1.0
+ * Version 2.0
+ * Queue-Based Tournament Importer
  * ==========================================
  */
 
 /**
- * Imports a tournament into the Tournaments sheet.
- * (Version 1 - Tournament Information Only)
+ * Imports every tournament currently waiting in the queue.
+ *
+ * Queue Rules:
+ * Imported = FALSE  -> Import tournament
+ * Imported = TRUE   -> Skip tournament
  */
-function importTournament(url) {
-
-  if (!url) {
-    SpreadsheetApp.getUi().alert("Please provide a PDGA tournament URL.");
-    return;
-  }
-
-  const html = UrlFetchApp.fetch(url).getContentText();
-
-  // -------------------------------
-  // Event ID
-  // -------------------------------
-
-  const eventMatch = url.match(/event\/(\d+)/);
-
-  const eventId = eventMatch ? eventMatch[1] : "";
-
-  // -------------------------------
-  // Tournament Name
-  // -------------------------------
-
-  let tournamentName = "";
-
-  const titleMatch = html.match(/<title>(.*?)\s*\|\s*Professional Disc Golf Association<\/title>/i);
-
-  if (titleMatch) {
-    tournamentName = titleMatch[1].trim();
-  }
-
-  // -------------------------------
-  // Write to Sheet
-  // -------------------------------
+function importQueuedTournaments() {
 
   const sheet = getSheet(CONFIG.TOURNAMENTS_SHEET);
 
-  sheet.appendRow([
-    eventId,
-    tournamentName,
-    "",
-    "",
-    "",
-    url,
-    true,
-    new Date()
-  ]);
+  const values = sheet.getDataRange().getValues();
+
+  let imported = 0;
+
+  for (let row = 1; row < values.length; row++) {
+
+    const eventId = String(values[row][0]).trim();
+    const url = String(values[row][5]).trim();
+    const alreadyImported = values[row][6];
+
+    if (!eventId) {
+      continue;
+    }
+
+    if (String(alreadyImported).toUpperCase() === "TRUE") {
+      continue;
+    }
+
+    if (!url) {
+      Logger.log("Missing URL for Event " + eventId);
+      continue;
+    }
+
+    Logger.log("Importing Event " + eventId);
+
+    try {
+
+      const html = getTournamentHTML(url);
+
+      const tournament = parseTournament(html, url);
+
+      // Column B
+      sheet.getRange(row + 1, 2)
+        .setValue(tournament.tournamentName);
+
+      // Column C
+      sheet.getRange(row + 1, 3)
+        .setValue(tournament.tournamentDate);
+
+      // Column D
+      sheet.getRange(row + 1, 4)
+        .setValue(tournament.tier);
+
+      // Column E
+      sheet.getRange(row + 1, 5)
+        .setValue(tournament.location);
+
+      // Column G
+      sheet.getRange(row + 1, 7)
+        .setValue(true);
+
+      // Column H
+      sheet.getRange(row + 1, 8)
+        .setValue(new Date());
+
+      imported++;
+
+      Utilities.sleep(250);
+
+    } catch (err) {
+
+      Logger.log(
+        "Failed Event " +
+        eventId +
+        " : " +
+        err
+      );
+
+    }
+
+  }
 
   SpreadsheetApp.getUi().alert(
-    "Tournament Imported!\n\n" +
-    tournamentName
+
+    "Tournament Import Complete\n\n" +
+
+    "Imported: " + imported
+
   );
 
 }
 
-/**
- * Temporary test function.
- */
-function testTournamentImport() {
 
-  importTournament(
-    "https://www.pdga.com/tour/event/104782"
-  );
+/**
+ * Developer Test
+ */
+function testTournamentImporter() {
+
+  importQueuedTournaments();
 
 }
